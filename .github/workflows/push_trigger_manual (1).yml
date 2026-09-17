@@ -1,51 +1,67 @@
-name: Maven Package Manual
+```yaml
+name: Maven Package Build Manual
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 
 jobs:
-
   build-artifactory-server:
     runs-on: ubuntu-latest
-    env: 
-      NAMESPACE: ${{ secrets. dev_namespace_docker_hub }}
+
+    env:
+      NAMESPACE: ${{ secrets.dev_namespace_docker_hub }}
       SERVICE_NAME: artifactory-server
       SERVICE_LOCATION: artifacts/
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        
-      - name: Setup branch and env 
-        run: |
-         # Strip git ref prefix from version
-         echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
-         echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
 
-      - name: setup environment
+      # Checkout source code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup environment
+      - name: Setup branch and environment
         run: |
-          # Strip git ref prefix from version
-          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
-          echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
-      
+          echo "BRANCH_NAME=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+
+      # Build Docker image
       - name: Build image
         run: |
-          cd "./${{env.SERVICE_LOCATION}}"
-          docker build . --file Dockerfile --tag ${{ env.SERVICE_NAME }}
-      
-      - name: Log into registry
-        run: echo "${{ secrets.release_docker_hub }}" | docker login -u ${{ secrets.actor_docker_hub }} --password-stdin
-        
+          cd "$SERVICE_LOCATION"
+
+          docker build . \
+            --file Dockerfile \
+            --tag "$SERVICE_NAME"
+
+      # Login to Docker Hub
+      - name: Log into Docker Hub
+        run: |
+          echo "${{ secrets.release_docker_hub }}" | \
+            docker login docker.io \
+            --username "${{ secrets.actor_docker_hub }}" \
+            --password-stdin
+
+      # Tag and push Docker image
       - name: Push image
         run: |
-          IMAGE_ID=$NAMESPACE/$SERVICE_NAME
-          
-          # Change all uppercase to lowercase
-          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
-          VERSION=$BRANCH_NAME
-          echo "push version $VERSION"
-          echo IMAGE_ID=$IMAGE_ID
-          echo VERSION=$VERSION
-          docker tag $SERVICE_NAME $IMAGE_ID:$VERSION
-          docker push $IMAGE_ID:$VERSION
+          IMAGE_ID="${NAMESPACE}/${SERVICE_NAME}"
+
+          # Convert Docker repository name to lowercase
+          IMAGE_ID=$(echo "$IMAGE_ID" | tr '[:upper:]' '[:lower:]')
+
+          # Convert branch name to a valid Docker tag
+          VERSION=$(echo "$BRANCH_NAME" | \
+            tr '[:upper:]' '[:lower:]' | \
+            sed 's/[^a-z0-9._-]/-/g')
+
+          echo "----------------------------------------"
+          echo "IMAGE_ID = $IMAGE_ID"
+          echo "VERSION  = $VERSION"
+          echo "----------------------------------------"
+
+          # Tag image
+          docker tag "$SERVICE_NAME" "$IMAGE_ID:$VERSION"
+
+          # Push image
+          docker push "$IMAGE_ID:$VERSION"
+```
