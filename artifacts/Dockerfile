@@ -1,4 +1,4 @@
-FROM nginx:stable
+FROM maven:3.8.8-eclipse-temurin-11 AS builder
 
 # can be passed during Docker build as build time environment for github branch to pickup configuration from.
 ARG container_user=mosip
